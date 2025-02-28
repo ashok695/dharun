@@ -52,7 +52,9 @@ func GetStatusData(projectID string) ([]models.StatusData, error) {
 			Status:   status,
 			WorkItem: workitem,
 		}
-		statusData = append(statusData, status)
+		if status.WorkItem == "Task" {
+			statusData = append(statusData, status)
+		}
 	}
 	err := iter.Close()
 	if err != nil {

@@ -6,10 +6,12 @@ import (
 	"github.com/dharun/poc/database"
 	"github.com/dharun/poc/internals/handlers"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
 	app := fiber.New()
+	app.Use(cors.New())
 	database.DBConnection()
 	defer database.CloseDatabase()
 	app.Get("/planner", handlers.GetPlanner)

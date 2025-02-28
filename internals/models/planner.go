@@ -31,7 +31,7 @@ type TaskData struct {
 	SubPhaseID       string       `json:"subphaseID"`
 	TaskTypeID       string       `json:"-"`
 	TaskType         []TypesData  `json:"TaskType"`
-	Title            string       `json:"title"`
+	Title            string       `json:"name"`
 	Type             string       `json:"type"`
 	WorkstreamID     string       `json:"-"`
 	Workstream       []TypesData  `json:"Workstream"`
@@ -44,6 +44,7 @@ type TaskData struct {
 	Variance         int8         `json:"variance"`
 	ActualStartDate  *time.Time   `json:"actualStartDate"`
 	ActualEndDate    *time.Time   `json:"actualEndDate"`
+	Level            string       `json:"level"`
 }
 
 type PlannerMap struct {
@@ -58,6 +59,12 @@ type RWTMap struct {
 	TasktypeMap   map[string]TypesData
 }
 
+type RWTData struct {
+	RoleData       []TypesData
+	WorkStreamData []TypesData
+	TasktypeData   []TypesData
+}
+
 type DependenciesData struct {
 	Project   string     `json:"project"`
 	DBID      gocql.UUID `json:"dbid"`
@@ -69,4 +76,22 @@ type DependenciesData struct {
 	Source    string     `json:"source"`
 	Target    string     `json:"target"`
 	Type      int        `json:"type"`
+}
+type Project struct {
+	Calendar     string `json:"calendar"`
+	DaysPerMonth int8   `json:"daysPerMonth"`
+	DaysPerWeek  int8   `json:"daysPerWeek"`
+	EndDate      string `json:"endDate"`
+	HoursPerDay  int8   `json:"hoursPerDay"`
+	StartDate    string `json:"startDate"`
+}
+type PlannerStruct struct {
+	Dependencies    []DependenciesData `json:"dependencies"`
+	Project         Project            `json:"project"`
+	Resources       []UserData         `json:"resources"`
+	RoleTypeOptions []TypesData        `json:"roletypeoptions"`
+	StatusType      []StatusData       `json:"statusType"`
+	TaskType        []TypesData        `json:"taskType"`
+	Tasks           []*TaskData        `json:"tasks"`
+	WorkStream      []TypesData        `json:"workstreamtype"`
 }
