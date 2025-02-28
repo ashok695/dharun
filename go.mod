@@ -9,6 +9,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.6 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/maruel/natural v1.1.1 // indirect

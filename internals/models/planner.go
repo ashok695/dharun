@@ -38,8 +38,8 @@ type TaskData struct {
 	Children         []*TaskData  `json:"children"`
 	ParentID         string       `json:"parentID"`
 	OverDueDays      int16        `json:"overdueDays"`
-	PlannedStart     *time.Time   `json:"plannedStart"`
-	PlannedEnd       *time.Time   `json:"plannedEnd"`
+	PlannedStart     *time.Time   `json:"startDate"`
+	PlannedEnd       *time.Time   `json:"endDate"`
 	IsOverdue        bool         `json:"isOverdue"`
 	Variance         int8         `json:"variance"`
 	ActualStartDate  *time.Time   `json:"actualStartDate"`
