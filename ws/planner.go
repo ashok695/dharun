@@ -10,24 +10,39 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var urgrader = websocket.Upgrader{
+var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all connections
+		return true // Allows all connections
 	},
 }
+var mu sync.Mutex
+var WaveRoom = make(map[string][]ClientInfo)
 
 type ClientInfo struct {
 	Username   string          `json:"username"`
 	WaveID     string          `json:"waveid"`
 	Connection *websocket.Conn `json:"-"`
 }
-type Activeusers struct {
-}
 
-var waveRoom = make(map[string][]ClientInfo)
-var mu sync.Mutex
+type PlannerEvents struct {
+	EventType string      `json:"eventtype"`
+	Data      interface{} `json:"data"`
+}
+type ActiveUsers struct {
+	WaveID string `json:"waveid"`
+}
+type GroupChat struct {
+	Title   string   `json:"title"`
+	WaveID  string   `json:"waveID"`
+	Members []string `json:"members"`
+	Creator string   `json:"creator"`
+}
+type GroupChatResponse struct {
+	EventType string    `json:"eventtype"`
+	Data      GroupChat `json:"data"`
+}
 
 func main() {
 	http.HandleFunc("/plannerws", handlePlannerWS)
@@ -41,121 +56,185 @@ func main() {
 }
 
 func handlePlannerWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := urgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Error in upgrading the data")
-		conn.Close()
+		fmt.Println("error in upgrading the conn")
 		return
 	}
+	// USER JOINING THE ROOM
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
-		fmt.Println("Error in Reading client")
+		fmt.Println("error in reading message from client")
 		conn.Close()
 		return
 	}
-	log.Println("Client is connected")
-	var userInfo ClientInfo
-	err = json.Unmarshal(msg, &userInfo)
+	var userinfo ClientInfo
+	err = json.Unmarshal(msg, &userinfo)
 	if err != nil {
-		fmt.Println("error in unmarshel the data")
+		fmt.Println("Error in marshelling the data")
+		conn.Close()
+		return
 	}
-	dt := ClientInfo{
-		Username:   userInfo.Username,
-		WaveID:     userInfo.WaveID,
+	if userinfo.Username == "" || userinfo.WaveID == "" {
+		fmt.Println("Error in user data")
+		conn.Close()
+		return
+	}
+	userdata := ClientInfo{
+		Username:   userinfo.Username,
+		WaveID:     userinfo.WaveID,
 		Connection: conn,
 	}
 	mu.Lock()
-	waveRoom[dt.WaveID] = append(waveRoom[dt.WaveID], dt)
+	WaveRoom[userdata.WaveID] = append(WaveRoom[userdata.WaveID], userdata)
 	mu.Unlock()
-	GreetingMsg := dt.Username + " is connected to " + dt.WaveID
-	BroadCastMessage(dt.WaveID, GreetingMsg)
-	ActiveUsers(dt.WaveID)
+	greetingmsg := userdata.Username + " is connected in room " + userdata.WaveID
+	GreetingMessages(userdata.WaveID, greetingmsg)
+	GetActiveUsers(userdata.WaveID)
+	go handleMessages(userdata)
 
-	go func() {
-		defer conn.Close()
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				fmt.Println("user disconnects")
-				Removeusers(dt)
-				break
-			}
-		}
-	}()
 }
 
-func Removeusers(userinfo ClientInfo) {
-	mu.Lock()
-	room, exists := waveRoom[userinfo.WaveID]
-	if !exists {
-		fmt.Println("Error in Connecting Room")
-		return
-	}
-	defer mu.Unlock()
+func handleMessages(userdata ClientInfo) {
+	defer userdata.Connection.Close()
 
-	updatedusers := []ClientInfo{}
-
-	for _, user := range room {
-		if user.Username != userinfo.Username {
-			updatedusers = append(updatedusers, user)
-		}
-	}
-
-	if len(updatedusers) == 0 {
-		fmt.Println("Every user is diconnected")
-		delete(waveRoom, userinfo.WaveID)
-	} else {
-		waveRoom[userinfo.WaveID] = updatedusers
-	}
-	DisconnectedMsg := userinfo.Username + " is disconnected from " + userinfo.WaveID
-	mu.Unlock()
-	BroadCastMessage(userinfo.WaveID, DisconnectedMsg)
-	ActiveUsers(userinfo.WaveID)
-	mu.Lock()
-}
-
-func BroadCastMessage(roomid string, msg string) {
-	mu.Lock()
-	room, exists := waveRoom[roomid]
-	if !exists {
-		fmt.Println("Error in fiding the room")
-	}
-	defer mu.Unlock()
-
-	for _, user := range room {
-		err := user.Connection.WriteMessage(websocket.TextMessage, []byte(msg))
+	for {
+		_, msg, err := userdata.Connection.ReadMessage()
 		if err != nil {
-			fmt.Println("error in sending message")
+			fmt.Println("USER DISCONNECTS")
+			Removeusers(userdata)
+		}
+		var eventMsg PlannerEvents
+		err = json.Unmarshal(msg, &eventMsg)
+		fmt.Println("data", eventMsg)
+		if err != nil {
+			fmt.Println("error in marshel event data")
+			return
+		}
+		if eventMsg.EventType == "" {
+			fmt.Println("event type is empty")
+			return
+		}
+		handleEvents(eventMsg)
+	}
+}
+
+func GreetingMessages(waveid string, msg string) {
+	mu.Lock()
+	defer mu.Unlock()
+	room, exists := WaveRoom[waveid]
+	if !exists {
+		fmt.Println("error in there is no room in waveid")
+		return
+	}
+
+	for _, client := range room {
+		err := client.Connection.WriteMessage(websocket.TextMessage, []byte(msg))
+		if err != nil {
+			fmt.Println("error in writing the data")
 		}
 	}
 }
 
-func ActiveUsers(roomid string) {
+func Removeusers(userdata ClientInfo) {
 	mu.Lock()
-	defer mu.Unlock()
-	room, exists := waveRoom[roomid]
+	room, exists := WaveRoom[userdata.WaveID]
 	if !exists {
-		fmt.Println("Error in finding teh Room")
+		fmt.Println("there is no room in this waveid")
+		mu.Unlock()
 		return
+	}
+	UpdatedUserList := []ClientInfo{}
+
+	for _, user := range room {
+		if user.Username != userdata.Username {
+			UpdatedUserList = append(UpdatedUserList, user)
+		}
 	}
 
-	clients := []string{}
-	for _, u := range room {
-		clients = append(clients, u.Username)
+	if len(UpdatedUserList) == 0 {
+		fmt.Println("every user left the room")
+		delete(WaveRoom, userdata.WaveID)
+		return
+	} else {
+		WaveRoom[userdata.WaveID] = UpdatedUserList
 	}
-	d, err := json.Marshal(clients)
-	if err != nil {
-		fmt.Println("error in parsing the data")
+	mu.Unlock()
+	msg := userdata.Username + " is left the " + userdata.WaveID
+	GreetingMessages(userdata.WaveID, msg)
+	GetActiveUsers(userdata.WaveID)
+}
+
+func handleEvents(eventMsg PlannerEvents) {
+	switch eventMsg.EventType {
+	case "planner_group":
+		{
+			CreateGroupChat(eventMsg.EventType, eventMsg.Data)
+		}
+	}
+}
+
+func GetActiveUsers(roomid string) {
+	mu.Lock()
+	defer mu.Unlock()
+	room, exists := WaveRoom[roomid]
+	if !exists {
+		fmt.Println("incorrect room id")
 		return
 	}
-	for _, user := range room {
-		err := user.Connection.WriteMessage(websocket.TextMessage, []byte(d))
+	clients := []string{}
+	for _, client := range room {
+		clients = append(clients, client.Username)
+	}
+	a, err := json.Marshal(clients)
+	if err != nil {
+		fmt.Println("error in marshal the data")
+	}
+	for _, u := range room {
+		err := u.Connection.WriteMessage(websocket.TextMessage, []byte(a))
 		if err != nil {
 			fmt.Println("error in sending data")
 		}
 	}
 }
 
-func GroupChat() {
-
+func CreateGroupChat(eventtype string, data interface{}) {
+	mu.Lock()
+	defer mu.Unlock()
+	userinfo, ok := data.(map[string]interface{})
+	if !ok {
+		fmt.Println("error in input format")
+		return
+	}
+	username := userinfo["username"].(string)
+	waveid := userinfo["waveid"].(string)
+	title := userinfo["title"].(string)
+	room, exists := WaveRoom[waveid]
+	if !exists {
+		fmt.Println("No room exists")
+	}
+	client := []string{}
+	for _, u := range room {
+		client = append(client, u.Username)
+	}
+	GroupChatData := GroupChat{
+		Title:   title,
+		WaveID:  waveid,
+		Members: client,
+		Creator: username,
+	}
+	groupChat := GroupChatResponse{
+		EventType: eventtype,
+		Data:      GroupChatData,
+	}
+	a, err := json.Marshal(groupChat)
+	if err != nil {
+		fmt.Println("error in marsalling the data")
+	}
+	for _, user := range room {
+		err := user.Connection.WriteMessage(websocket.TextMessage, a)
+		if err != nil {
+			fmt.Println("error in sending data")
+		}
+	}
 }
