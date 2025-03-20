@@ -45,6 +45,7 @@ type TaskData struct {
 	ActualStartDate  *time.Time   `json:"actualStartDate"`
 	ActualEndDate    *time.Time   `json:"actualEndDate"`
 	Level            string       `json:"level"`
+	Priority         string       `json:"priority"`
 }
 
 type PlannerMap struct {

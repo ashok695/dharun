@@ -38,10 +38,23 @@ type GroupChat struct {
 	WaveID  string   `json:"waveID"`
 	Members []string `json:"members"`
 	Creator string   `json:"creator"`
+	Message string   `json:"message"`
 }
 type GroupChatResponse struct {
 	EventType string    `json:"eventtype"`
 	Data      GroupChat `json:"data"`
+}
+
+type InduvidualChat struct {
+	Username string `json:"username"`
+	Receiver string `json:"receiver"`
+	WaveID   string `json:"waveid"`
+	Message  string `json:"message"`
+}
+
+type InduvidualChatResponse struct {
+	EventType string         `json:"eventtype"`
+	Data      InduvidualChat `json:"data"`
 }
 
 func main() {
@@ -68,6 +81,7 @@ func handlePlannerWS(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		return
 	}
+	log.Println("User Connected successfully")
 	var userinfo ClientInfo
 	err = json.Unmarshal(msg, &userinfo)
 	if err != nil {
@@ -171,6 +185,10 @@ func handleEvents(eventMsg PlannerEvents) {
 		{
 			CreateGroupChat(eventMsg.EventType, eventMsg.Data)
 		}
+	case "dm_chat":
+		{
+			CreateInduvidualChat(eventMsg.EventType, eventMsg.Data)
+		}
 	}
 }
 
@@ -199,6 +217,7 @@ func GetActiveUsers(roomid string) {
 }
 
 func CreateGroupChat(eventtype string, data interface{}) {
+	fmt.Println("group data", data)
 	mu.Lock()
 	defer mu.Unlock()
 	userinfo, ok := data.(map[string]interface{})
@@ -209,6 +228,7 @@ func CreateGroupChat(eventtype string, data interface{}) {
 	username := userinfo["username"].(string)
 	waveid := userinfo["waveid"].(string)
 	title := userinfo["title"].(string)
+	message := userinfo["message"].(string)
 	room, exists := WaveRoom[waveid]
 	if !exists {
 		fmt.Println("No room exists")
@@ -222,6 +242,7 @@ func CreateGroupChat(eventtype string, data interface{}) {
 		WaveID:  waveid,
 		Members: client,
 		Creator: username,
+		Message: message,
 	}
 	groupChat := GroupChatResponse{
 		EventType: eventtype,
@@ -237,4 +258,56 @@ func CreateGroupChat(eventtype string, data interface{}) {
 			fmt.Println("error in sending data")
 		}
 	}
+}
+
+func CreateInduvidualChat(eventtype string, data interface{}) {
+	fmt.Println("hi inside from dm ")
+	fmt.Println("data", data)
+	mu.Lock()
+	defer mu.Unlock()
+	userdata, ok := data.(map[string]interface{})
+	if !ok {
+		fmt.Println("incorrect format in the induvidual chat")
+		return
+	}
+	fmt.Println("userdata", userdata)
+	sender := userdata["username"].(string)
+	receiver := userdata["receiver"].(string)
+	waveid := userdata["waveid"].(string)
+	message := userdata["message"].(string)
+
+	room, exists := WaveRoom[waveid]
+	if !exists {
+		fmt.Println("Error in finding the room")
+	}
+	ic := InduvidualChat{
+		Username: sender,
+		Receiver: receiver,
+		WaveID:   waveid,
+		Message:  message,
+	}
+	induvidualChatData := InduvidualChatResponse{
+		EventType: eventtype,
+		Data:      ic,
+	}
+	a, err := json.Marshal(induvidualChatData)
+	if err != nil {
+		fmt.Println("error in marshalling the data")
+		return
+	}
+	for _, client := range room {
+		if client.Username == receiver {
+			err := client.Connection.WriteMessage(websocket.TextMessage, a)
+			if err != nil {
+				fmt.Println("error in sending the data to the user")
+			}
+		}
+		if client.Username == sender {
+			err := client.Connection.WriteMessage(websocket.TextMessage, a)
+			if err != nil {
+				fmt.Println("error in sending the data to the user")
+			}
+		}
+	}
+
 }
